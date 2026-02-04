@@ -7,9 +7,6 @@ const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 /**
@@ -22,11 +19,7 @@ export const uploadDocument = async (file, title = null) => {
     formData.append('title', title);
   }
 
-  const response = await api.post('/api/documents/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+ const response = await api.post('/api/documents/upload', formData);
 
   return response.data;
 };
