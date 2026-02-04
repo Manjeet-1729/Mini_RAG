@@ -1,28 +1,34 @@
 /**
- * Main App component - ChatGPT-style interface with sidebar
+ * Main App component with sidebar and session management
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import ChatInterface from './components/ChatInterface';
-import DocumentUpload from './components/DocumentUpload';
-import { getStats, healthCheck } from './services/api';
-import './index.css';
+import Sidebar from './components/Sidebar';
+import { healthCheck } from './services/api';
 
 function App() {
-  const [stats, setStats] = useState(null);
   const [health, setHealth] = useState(null);
-  const [conversations, setConversations] = useState([]);
-  const [activeConversationId, setActiveConversationId] = useState(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   useEffect(() => {
+    // Check health on mount
     checkHealth();
-    fetchStats();
     
-    // Create initial conversation if none exists
-    if (conversations.length === 0) {
-      createNewConversation();
-    }
+    // Clear sessions on page load/reload - START FRESH
+    localStorage.removeItem('rag_sessions');
+    
+    // Create first session
+    createNewSession();
   }, []);
+
+  // Save sessions whenever they change
+  useEffect(() => {
+    if (sessions.length > 0) {
+      localStorage.setItem('rag_sessions', JSON.stringify(sessions));
+    }
+  }, [sessions]);
 
   const checkHealth = async () => {
     try {
@@ -33,121 +39,114 @@ function App() {
     }
   };
 
-  const fetchStats = async () => {
-    try {
-      const data = await getStats();
-      setStats(data);
-    } catch (error) {
-      console.error('Failed to fetch stats:', error);
+  const createNewSession = () => {
+    const newSession = {
+      id: `session-${Date.now()}`,
+      title: 'New conversation',
+      createdAt: new Date().toISOString(),
+      documents: [],
+      chatHistory: [],
+      messages: [] // Separate messages array for UI
+    };
+    
+    setSessions(prev => [newSession, ...prev]);
+    setCurrentSessionId(newSession.id);
+  };
+
+  const updateSessionTitle = (sessionId, firstQuery) => {
+    setSessions(prev => prev.map(session => 
+      session.id === sessionId
+        ? { ...session, title: firstQuery.slice(0, 50) + (firstQuery.length > 50 ? '...' : '') }
+        : session
+    ));
+  };
+
+  const addDocumentToSession = (sessionId, document) => {
+    setSessions(prev => prev.map(session =>
+      session.id === sessionId
+        ? { ...session, documents: [...session.documents, document] }
+        : session
+    ));
+  };
+
+  const updateSessionMessages = (sessionId, messages) => {
+    setSessions(prev => prev.map(session =>
+      session.id === sessionId
+        ? { ...session, messages: messages }
+        : session
+    ));
+  };
+
+  const updateSessionChatHistory = (sessionId, chatHistory) => {
+    setSessions(prev => prev.map(session =>
+      session.id === sessionId
+        ? { ...session, chatHistory: chatHistory }
+        : session
+    ));
+  };
+
+  const deleteSession = async (sessionId) => {
+    const sessionToDelete = sessions.find(s => s.id === sessionId);
+    
+    // Delete all document chunks from this session
+    if (sessionToDelete && sessionToDelete.documents.length > 0) {
+      try {
+        // Import deleteDocumentChunks function
+        const { deleteDocumentChunks } = await import('./services/api');
+        
+        for (const doc of sessionToDelete.documents) {
+          await deleteDocumentChunks(doc.document_id);
+        }
+      } catch (error) {
+        console.error('Error deleting document chunks:', error);
+      }
+    }
+    
+    // Remove session from state
+    setSessions(prev => prev.filter(s => s.id !== sessionId));
+    
+    // If deleted current session, switch to another
+    if (sessionId === currentSessionId) {
+      const remaining = sessions.filter(s => s.id !== sessionId);
+      if (remaining.length > 0) {
+        setCurrentSessionId(remaining[0].id);
+      } else {
+        createNewSession();
+      }
     }
   };
 
-  const handleUploadSuccess = () => {
-    fetchStats();
-    setShowUploadModal(false);
-  };
-
-  const createNewConversation = () => {
-    const newConv = {
-      id: Date.now(),
-      title: 'New conversation',
-      timestamp: Date.now(),
-      preview: ''
-    };
-    setConversations(prev => [newConv, ...prev]);
-    setActiveConversationId(newConv.id);
-  };
-
-  const updateConversationTitle = (id, firstMessage) => {
-    setConversations(convs =>
-      convs.map(conv =>
-        conv.id === id
-          ? { ...conv, title: firstMessage.substring(0, 30) + '...', preview: firstMessage }
-          : conv
-      )
-    );
-  };
+  const currentSession = sessions.find(s => s.id === currentSessionId);
 
   return (
-    <div className="chatgpt-app">
+    <div className="app-container">
       {/* Sidebar */}
-      <div className="chatgpt-sidebar">
-        <div className="sidebar-header">
-          <button className="new-chat-btn" onClick={createNewConversation}>
-            <span className="icon">+</span>
-            <span>New chat</span>
-          </button>
-        </div>
+      <Sidebar
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSessionSelect={setCurrentSessionId}
+        onNewSession={createNewSession}
+        onDeleteSession={deleteSession}
+        currentSessionDocuments={currentSession?.documents || []}
+        health={health}
+      />
 
-        <div className="chat-list">
-          {conversations.map(conv => (
-            <div
-              key={conv.id}
-              className={`chat-item ${activeConversationId === conv.id ? 'active' : ''}`}
-              onClick={() => setActiveConversationId(conv.id)}
-            >
-              <span className="chat-icon">💬</span>
-              <div className="chat-item-content">
-                <div className="chat-title">{conv.title}</div>
-                {conv.preview && (
-                  <div className="chat-preview">{conv.preview.substring(0, 40)}...</div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="sidebar-footer">
-          <button className="upload-btn" onClick={() => setShowUploadModal(!showUploadModal)}>
-            <span className="icon">📄</span>
-            <span>Upload Documents</span>
-          </button>
-          
-          {stats && stats.total_chunks > 0 && (
-            <div className="stats-info">
-              <span className="stat-item">
-                <span className="stat-icon">📊</span>
-                <span>{stats.total_chunks} chunks</span>
-              </span>
-            </div>
-          )}
-
-          {health && (
-            <div className={`health-indicator ${health.status === 'healthy' ? 'healthy' : 'unhealthy'}`}>
-              <span className="status-dot"></span>
-              <span>{health.status === 'healthy' ? 'Connected' : 'Disconnected'}</span>
-            </div>
-          )}
-        </div>
+      {/* Main Chat Area */}
+      <div className="main-content">
+        {currentSession && (
+          <ChatInterface
+            key={currentSessionId} // Force re-render on session change
+            sessionId={currentSession.id}
+            sessionDocuments={currentSession.documents}
+            initialMessages={currentSession.messages || []}
+            initialChatHistory={currentSession.chatHistory || []}
+            onDocumentAdded={(doc) => addDocumentToSession(currentSession.id, doc)}
+            onMessagesUpdate={(msgs) => updateSessionMessages(currentSession.id, msgs)}
+            onChatHistoryUpdate={(history) => updateSessionChatHistory(currentSession.id, history)}
+            onTitleUpdate={(query) => updateSessionTitle(currentSession.id, query)}
+          />
+        )}
       </div>
-
-      {/* Main Content */}
-      <div className="chatgpt-main">
-        <div className="chat-header">
-          <h2>🔍 RAG Application</h2>
-          <p className="subtitle">Chat with Your Documents</p>
-        </div>
-
-        <ChatInterface
-          conversationId={activeConversationId}
-          onFirstMessage={(message) => updateConversationTitle(activeConversationId, message)}
-        />
-      </div>
-
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="modal-overlay" onClick={() => setShowUploadModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>📄 Upload Documents</h2>
-              <button className="modal-close" onClick={() => setShowUploadModal(false)}>
-                ✕
-              </button>
-            </div>
-            <DocumentUpload onUploadSuccess={handleUploadSuccess} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

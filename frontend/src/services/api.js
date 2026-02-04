@@ -65,6 +65,14 @@ export const sendQuery = async (query, chatHistory = [], sessionId = null) => {
 };
 
 /**
+ * Delete document chunks from vector store
+ */
+export const deleteDocumentChunks = async (documentId) => {
+  const response = await api.delete(`/api/documents/${documentId}`);
+  return response.data;
+};
+
+/**
  * Health check
  */
 export const healthCheck = async () => {

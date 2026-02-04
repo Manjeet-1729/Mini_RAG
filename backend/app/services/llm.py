@@ -230,12 +230,23 @@ YOUR ANSWER (conversational, well-structured, with inline citations):"""
         self,
         chunks: List[RerankedChunk]
     ) -> List[SourceReference]:
-        """Create source reference objects from chunks."""
+        """Create source reference objects from chunks, filtering duplicates."""
         sources = []
+        seen_texts = set()
+        source_id = 1
         
-        for i, chunk in enumerate(chunks):
+        for chunk in chunks:
+            # Create a hash of the text to check for duplicates
+            text_hash = hash(chunk.text[:100])  # Use first 100 chars for comparison
+            
+            # Skip if we've seen this text before
+            if text_hash in seen_texts:
+                continue
+            
+            seen_texts.add(text_hash)
+            
             source = SourceReference(
-                id=i + 1,
+                id=source_id,
                 text=chunk.text[:200] + "..." if len(chunk.text) > 200 else chunk.text,
                 document=chunk.metadata.source,
                 links=chunk.metadata.links,
@@ -245,6 +256,7 @@ YOUR ANSWER (conversational, well-structured, with inline citations):"""
                 section=chunk.metadata.section
             )
             sources.append(source)
+            source_id += 1
         
         return sources
     

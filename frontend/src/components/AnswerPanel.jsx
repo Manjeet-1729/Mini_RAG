@@ -12,6 +12,9 @@ export default function AnswerPanel({ response }) {
 
   const { answer, sources, has_context, general_answer, timing, token_usage } = response;
 
+  // Filter sources with score >= 0.5
+  const filteredSources = sources?.filter(source => source.score >= 0.5) || [];
+
   // Convert citations in answer to clickable links
   const renderAnswerWithClickableCitations = (text) => {
     // Match citations like [1], [2], [3]
@@ -21,19 +24,24 @@ export default function AnswerPanel({ response }) {
       const match = part.match(/\[(\d+)\]/);
       if (match) {
         const citationId = parseInt(match[1]);
-        return (
-          <span
-            key={index}
-            className="citation-link"
-            onClick={() => {
-              setSelectedSourceId(citationId);
-              setShowAllSources(true);
-            }}
-            title={`Click to see source ${citationId}`}
-          >
-            {part}
-          </span>
-        );
+        // Only make clickable if source exists and has good score
+        const sourceExists = filteredSources.some(s => s.id === citationId);
+        
+        if (sourceExists) {
+          return (
+            <span
+              key={index}
+              className="citation-link"
+              onClick={() => {
+                setSelectedSourceId(citationId);
+                setShowAllSources(true);
+              }}
+              title={`Click to see source ${citationId}`}
+            >
+              {part}
+            </span>
+          );
+        }
       }
       return <span key={index}>{part}</span>;
     });
@@ -50,9 +58,11 @@ export default function AnswerPanel({ response }) {
           <div className="answer-text">
             {renderAnswerWithClickableCitations(answer)}
           </div>
-          <div className="citation-hint">
-            💡 Click on citations like [1] to see the source
-          </div>
+          {filteredSources.length > 0 && (
+            <div className="citation-hint">
+              💡 Click on citations like [1] to see the source
+            </div>
+          )}
         </div>
       ) : (
         <div className="answer-section no-context">
@@ -73,11 +83,11 @@ export default function AnswerPanel({ response }) {
         </div>
       )}
 
-      {/* Sources - Show/Hide Toggle */}
-      {sources && sources.length > 0 && (
+      {/* Sources - Show/Hide Toggle (only show if there are high-quality sources) */}
+      {filteredSources.length > 0 && (
         <div className="sources-section">
           <div className="sources-header">
-            <h3>📚 Sources ({sources.length})</h3>
+            <h3>📚 Sources ({filteredSources.length})</h3>
             <button
               className="btn-toggle-sources"
               onClick={() => setShowAllSources(!showAllSources)}
@@ -88,7 +98,7 @@ export default function AnswerPanel({ response }) {
           
           {showAllSources && (
             <div className="sources-list">
-              {sources.map((source) => (
+              {filteredSources.map((source) => (
                 <SourceCard
                   key={source.id}
                   source={source}

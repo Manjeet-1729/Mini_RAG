@@ -108,3 +108,29 @@ async def get_stats():
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{document_id}")
+async def delete_document(document_id: str):
+    """
+    Delete a document and its chunks from the vector store.
+    
+    Args:
+        document_id: Document identifier (filename)
+        
+    Returns:
+        Deletion status
+    """
+    try:
+        from app.services.vectorstore import get_vectorstore_service
+        
+        vectorstore = get_vectorstore_service()
+        vectorstore.delete_by_source(document_id)
+        
+        return {
+            "success": True,
+            "message": f"Document {document_id} deleted successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error deleting document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
